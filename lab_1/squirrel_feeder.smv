@@ -1,0 +1,115 @@
+MODULE main
+
+VAR
+  env        : environment(stock.empty);
+  sensor     : presence_sensor(env.squirrel_here);
+  controller : feeder_controller(sensor.present, stock.has_food);
+  motor      : feeder_motor(controller.dispense_cmd);
+  indicator  : low_food_indicator(stock.empty);
+  stock      : food_storage(controller.dispense_cmd, env.refill_request);
+
+LTLSPEC
+  G F env.squirrel_here
+
+LTLSPEC
+  G ((sensor.present & stock.has_food & controller.state = idle) ->
+     X (controller.state = dispense))
+
+LTLSPEC
+  G !(motor.motor_on & stock.empty)
+
+LTLSPEC
+  G (stock.empty -> F stock.full)
+
+
+MODULE environment(empty)
+
+VAR
+  squirrel_here  : boolean;
+  absence_timer  : 0..3;
+  refill_request : boolean;
+  refill_timer   : 0..4;
+
+ASSIGN
+  init(squirrel_here) := FALSE;
+  next(squirrel_here) := case
+    absence_timer = 3 : TRUE;
+    TRUE : {TRUE, FALSE};
+  esac;
+
+  init(absence_timer) := 0;
+  next(absence_timer) := case
+    squirrel_here : 0;
+    absence_timer < 3 : absence_timer + 1;
+    TRUE : 3;
+  esac;
+
+  init(refill_request) := FALSE;
+  next(refill_request) := case
+    !empty : FALSE;
+    refill_timer = 4 : TRUE;
+    TRUE : {TRUE, FALSE};
+  esac;
+
+  init(refill_timer) := 0;
+  next(refill_timer) := case
+    !empty : 0;
+    refill_request : 0;
+    refill_timer < 4 : refill_timer + 1;
+    TRUE : 4;
+  esac;
+
+
+MODULE presence_sensor(squirrel_here)
+
+DEFINE
+  present := squirrel_here;
+
+
+MODULE feeder_controller(present, has_food)
+
+VAR
+  state : {idle, dispense, wait_leave};
+
+ASSIGN
+  init(state) := idle;
+  next(state) := case
+    state = idle & present & has_food : dispense;
+    state = dispense : wait_leave;
+    state = wait_leave & !present : idle;
+    TRUE : state;
+  esac;
+
+DEFINE
+  dispense_cmd := (state = dispense);
+
+
+MODULE feeder_motor(dispense_cmd)
+
+DEFINE
+  motor_on := dispense_cmd;
+
+
+MODULE low_food_indicator(empty)
+
+DEFINE
+  lamp_on := empty;
+
+
+MODULE food_storage(dispense_cmd, refill_request)
+
+VAR
+  food_count : 0..3;
+
+ASSIGN
+  init(food_count) := 3;
+  next(food_count) := case
+    refill_request : 3;
+    dispense_cmd & food_count > 0 : food_count - 1;
+    TRUE : food_count;
+  esac;
+
+DEFINE
+  has_food := (food_count > 0);
+  empty    := (food_count = 0);
+  full     := (food_count = 3);
