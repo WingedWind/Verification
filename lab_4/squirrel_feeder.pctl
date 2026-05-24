@@ -1,0 +1,8 @@
+P>=1 [ F "squirrel" ];
+
+P>=1 [ G ("refill_req" => "empty") ];
+
+filter(forall, P>=1 [ F "dispense" ],
+       "ctrl_phase" & "detected" & !"empty" & "idle");
+
+filter(forall, P>=1 [ F "full" ], "empty");
